@@ -1,19 +1,90 @@
-import 'dart:convert' show utf8, ascii;
+import 'dart:convert';
 import 'dart:typed_data';
 
-/// Represents the NDEF Message that is specified by the NFC Forum.
-class NdefMessage {
-  NdefMessage(this.records);
+import '../channel.dart';
+import '../translator.dart';
+import './nfc_manager.dart';
 
-  final List<NdefRecord> records;
+/// The class provides access to NDEF operations on the tag.
+///
+/// Acquire `Ndef` instance using `Ndef.from`.
+class Ndef {
+  /// Constructs an instance with the given values for testing.
+  ///
+  /// The instances constructs by this way are not valid in the production environment.
+  /// Only instances obtained from the `Ndef.from` are valid.
+  const Ndef({
+    required NfcTag tag,
+    required this.isWritable,
+    required this.maxSize,
+    required this.cachedMessage,
+    required this.additionalData,
+  }) : _tag = tag;
 
-  int get byteLength => records.isEmpty
-    ? 0
-    : records.map((e) => e.byteLength).reduce((x, y) => x+y);
+  // _tag
+  final NfcTag _tag;
+
+  /// The value from Ndef#isWritable on Android, NFCNDEFTag#queryStatus on iOS.
+  final bool isWritable;
+
+  /// The value from Ndef#maxSize on Android, NFCNDEFTag#queryStatus on iOS.
+  final int maxSize;
+
+  /// The value from Ndef#cachedNdefMessage on Android, NFCNDEFTag#read on iOS.
+  ///
+  /// This value is cached at tag discovery.
+  final NdefMessage? cachedMessage;
+
+  /// The value represents some additional data.
+  final Map<String, dynamic> additionalData;
+
+  /// Get an instance of `Ndef` for the given tag.
+  ///
+  /// Returns null if the tag is not compatible with NDEF.
+  static Ndef? from(NfcTag tag) => $GetNdef(tag);
+
+  /// Read the current NDEF message on this tag.
+  Future<NdefMessage> read() async {
+    return channel.invokeMethod('Ndef#read', {
+      'handle': _tag.handle,
+    }).then((value) => $GetNdefMessage(Map.from(value)));
+  }
+
+  /// Write the NDEF message on this tag.
+  Future<void> write(NdefMessage message) async {
+    return channel.invokeMethod('Ndef#write', {
+      'handle': _tag.handle,
+      'message': $GetNdefMessageMap(message),
+    });
+  }
+
+  /// Change the NDEF status to read-only.
+  ///
+  /// This is a permanent action that you cannot undo. After locking the tag, you can no longer write data to it.
+  Future<void> writeLock() async {
+    return channel.invokeMethod('Ndef#writeLock', {
+      'handle': _tag.handle,
+    });
+  }
 }
 
-/// Represents the NDEF Record that is specified by the NFC Forum.
+/// The class represents the immutable NDEF message.
+class NdefMessage {
+  /// Constructs an instance with given records.
+  const NdefMessage(this.records);
+
+  /// Records.
+  final List<NdefRecord> records;
+
+  /// The length in bytes of the NDEF message when stored on the tag.
+  int get byteLength => records.isEmpty
+      ? 0
+      : records.map((e) => e.byteLength).reduce((a, b) => a + b);
+}
+
+/// The class represents the immutable NDEF record.
 class NdefRecord {
+  /// URI_PREFIX_LIST
   static const URI_PREFIX_LIST = [
     '',
     'http://www.',
@@ -53,187 +124,174 @@ class NdefRecord {
     'urn:nfc:',
   ];
 
-  static const TNF_EMPTY = 0x00;
-  static const TNF_WELL_KNOWN = 0x01;
-  static const TNF_MIME = 0x02;
-  static const TNF_ABSOLUTE_URI = 0x03;
-  static const TNF_EXTERNAL = 0x04;
-  static const TNF_UNKNOWN = 0x05;
-  static const TNF_UNCHANGED = 0x06;
-  static const TNF_RESERVE = 0x07;
+  // NdefRecord
+  const NdefRecord._({
+    required this.typeNameFormat,
+    required this.type,
+    required this.identifier,
+    required this.payload,
+  });
 
-  static const RTD_TEXT = [0x54];
-  static const RTD_URI = [0x55];
-  static const RTD_SMART_POSTER = [0x53, 0x70];
-  static const RTD_ALTERNATIVE_CARRIER = [0x61, 0x63];
-  static const RTD_HANDOVER_CARRIER = [0x48, 0x63];
-  static const RTD_HANDOVER_REQUEST = [0x48, 0x72];
-  static const RTD_HANDOVER_SELECT = [0x48, 0x73];
+  /// Type Name Format.
+  final NdefTypeNameFormat typeNameFormat;
 
-  NdefRecord._(
-    this.typeNameFormat,
-    this.type,
-    this.identifier,
-    this.payload,
-  );
-
-  final int typeNameFormat;
-
+  /// Type.
   final Uint8List type;
 
+  /// Identifier.
   final Uint8List identifier;
 
+  /// Payload.
   final Uint8List payload;
 
-  /// Length in bytes that stored on this record.
+  /// The length in bytes of the NDEF record when stored on the tag.
   int get byteLength {
-    int length = 3 + type.length + identifier.length + payload.length;
+    var length = 3 + type.length + identifier.length + payload.length;
 
-    // Not Short Record
-    if (payload.length >= 256)
-      length += 3;
+    // not short record
+    if (payload.length > 255) length += 3;
 
-    // ID Length
-    if (typeNameFormat == TNF_EMPTY || identifier.length > 0)
+    // id length
+    if (typeNameFormat == NdefTypeNameFormat.empty || identifier.length > 0)
       length += 1;
 
     return length;
   }
 
-  /// Create an NDEF record from its component fields.
+  /// Constructs an instance with the given values.
   ///
-  /// Recommended to use other factory constructors such as `createExternalRecord` where possible,
-  /// since they perform validation that the record is correctly formatted as NDEF.
-  /// However if you know what you are doing then this constructor offers the most flexibility.
+  /// Recommend to use other factory constructors such as `createText` or `createUri` where possible,
+  /// since they will ensure that the records are formatted correctly according to the NDEF specification.
   factory NdefRecord({
-    int typeNameFormat,
-    Uint8List type,
-    Uint8List identifier,
-    Uint8List payload,
+    required NdefTypeNameFormat typeNameFormat,
+    required Uint8List type,
+    required Uint8List identifier,
+    required Uint8List payload,
   }) {
-    Uint8List _type = type ?? Uint8List.fromList([]);
-    Uint8List _identifier = identifier ?? Uint8List.fromList([]);
-    Uint8List _payload = payload ?? Uint8List.fromList([]);
-
-    _validateFormat(typeNameFormat, _type, _identifier, _payload);
-
-    return NdefRecord._(typeNameFormat, _type, _identifier, _payload);
-  }
-
-  /// Create an NDEF record containing external (applicattion-specific) data.
-  factory NdefRecord.createExternal(String domain, String type, Uint8List data) {
-    if (domain == null)
-      throw('domain is null');
-    if (type == null)
-      throw('type is null');
-
-    String _domain = domain.trim().toLowerCase();
-    String _type = type.trim().toLowerCase();
-
-    if (_domain.isEmpty)
-      throw('domain is empty');
-    if (_type.isEmpty)
-      throw('type is empty');
-
-    List<int> domainBytes = utf8.encode(_domain);
-    List<int> typeBytes = utf8.encode(_type);
-    List<int> bytes = domainBytes + ':'.codeUnits + typeBytes;
-
-    return NdefRecord(
-      typeNameFormat: TNF_EXTERNAL,
-      type: Uint8List.fromList(bytes),
-      identifier: null,
-      payload: data,
+    _validateFormat(typeNameFormat, type, identifier, payload);
+    return NdefRecord._(
+      typeNameFormat: typeNameFormat,
+      type: type,
+      identifier: identifier,
+      payload: payload,
     );
   }
 
-  /// Create an NDEF record containing a mime data.
-  factory NdefRecord.createMime(String type, Uint8List data) {
-    if (type == null)
-      throw('type is null');
-    String normalized = type.toLowerCase().trim().split(';').first;
-    if (normalized.isEmpty)
-      throw('type is empty');
-
-    int slashIndex = normalized.indexOf('/');
-    if (slashIndex == 0)
-      throw('type must have major type');
-    if (slashIndex == normalized.length - 1)
-      throw('type must have minor type');
-
-    return NdefRecord(
-      typeNameFormat: TNF_MIME,
-      type: ascii.encode(type),
-      identifier: null,
-      payload: data,
-    );
-  }
-
-  /// Create an NDEF record containing a UTF-8 text.
+  /// Constructs an instance containing UTF-8 text.
   ///
-  /// Can specify the `languageCode` for the provided text. The default is 'en'.
-  factory NdefRecord.createText(String text, {String languageCode}) {
-    if (text == null)
-      throw('text is null');
-
-    List<int> languageCodeBytes = ascii.encode(languageCode ?? 'en');
-    if (languageCodeBytes.length >= 64)
-      throw('languageCode is too long');
-
-    List<int> textBytes = languageCodeBytes + utf8.encode(text);
+  /// Can specify the `languageCode` for the given text, `en` by default.
+  factory NdefRecord.createText(String text, {String languageCode = 'en'}) {
+    final languageCodeBytes = ascii.encode(languageCode);
+    if (languageCodeBytes.length >= 64) throw ('languageCode is too long');
 
     return NdefRecord(
-      typeNameFormat: TNF_WELL_KNOWN,
-      type: Uint8List.fromList(RTD_TEXT),
-      identifier: null,
-      payload: Uint8List.fromList([languageCodeBytes.length] + textBytes),
+      typeNameFormat: NdefTypeNameFormat.nfcWellknown,
+      type: Uint8List.fromList([0x54]),
+      identifier: Uint8List.fromList([]),
+      payload: Uint8List.fromList(
+        [languageCodeBytes.length] + languageCodeBytes + utf8.encode(text),
+      ),
     );
   }
 
-  /// Create an NDEF record containing a uri.
+  /// Constructs an instance containing URI.
   factory NdefRecord.createUri(Uri uri) {
-    if (uri == null)
-      throw('uri is null');
+    final uriString = uri.normalizePath().toString();
+    if (uriString.isEmpty) throw ('uri is empty');
 
-    String uriString = uri.normalizePath().toString();
-    if (uriString.length < 1)
-      throw('uri is empty');
-
-    int prefixIndex = URI_PREFIX_LIST.indexWhere((e) => uriString.startsWith(e), 1);
+    int prefixIndex =
+        URI_PREFIX_LIST.indexWhere((e) => uriString.startsWith(e), 1);
     if (prefixIndex < 0) prefixIndex = 0;
 
-    List<int> uriBytes = utf8.encode(
-      uriString.substring(URI_PREFIX_LIST[prefixIndex].length),
-    );
+    return NdefRecord(
+        typeNameFormat: NdefTypeNameFormat.nfcWellknown,
+        type: Uint8List.fromList([0x55]),
+        identifier: Uint8List.fromList([]),
+        payload: Uint8List.fromList(
+          [prefixIndex] +
+              utf8.encode(
+                  uriString.substring(URI_PREFIX_LIST[prefixIndex].length)),
+        ));
+  }
+
+  /// Constructs an instance containing media data as defined by RFC 2046.
+  factory NdefRecord.createMime(String type, Uint8List data) {
+    type = type.toLowerCase().trim().split(';').first;
+    if (type.isEmpty) throw ('type is empty');
+
+    final slashIndex = type.indexOf('/');
+    if (slashIndex == 0) throw ('type must have mojor type');
+    if (slashIndex == type.length - 1) throw ('type must have minor type');
 
     return NdefRecord(
-      typeNameFormat: TNF_WELL_KNOWN,
-      type: Uint8List.fromList(RTD_URI),
-      identifier: null,
-      payload: Uint8List.fromList([prefixIndex] + uriBytes),
+      typeNameFormat: NdefTypeNameFormat.media,
+      type: ascii.encode(type),
+      identifier: Uint8List.fromList([]),
+      payload: data,
     );
+  }
+
+  /// Constructs an instance containing external (application-specific) data.
+  factory NdefRecord.createExternal(
+      String domain, String type, Uint8List data) {
+    domain = domain.trim().toLowerCase();
+    type = type.trim().toLowerCase();
+    if (domain.isEmpty) throw ('domain is empty');
+    if (type.isEmpty) throw ('type is empty');
+
+    return NdefRecord(
+      typeNameFormat: NdefTypeNameFormat.nfcExternal,
+      type: Uint8List.fromList(
+          utf8.encode(domain) + ':'.codeUnits + utf8.encode(type)),
+      identifier: Uint8List.fromList([]),
+      payload: data,
+    );
+  }
+
+  // _validateFormat
+  static void _validateFormat(NdefTypeNameFormat format, Uint8List type,
+      Uint8List identifier, Uint8List payload) {
+    switch (format) {
+      case NdefTypeNameFormat.empty:
+        if (type.isNotEmpty || identifier.isNotEmpty || payload.isNotEmpty)
+          throw ('unexpected data in EMPTY record');
+        break;
+      case NdefTypeNameFormat.nfcWellknown:
+      case NdefTypeNameFormat.media:
+      case NdefTypeNameFormat.absoluteUri:
+      case NdefTypeNameFormat.nfcExternal:
+        break;
+      case NdefTypeNameFormat.unknown:
+        if (type.isNotEmpty) throw ('unexpected type field in UNKNOWN record');
+        break;
+      case NdefTypeNameFormat.unchanged:
+        throw ('unexpected UNCHANGED in first chunk or logical record');
+      default:
+        throw ('unexpected format: $format');
+    }
   }
 }
 
-void _validateFormat(int format, Uint8List type, Uint8List identifier, Uint8List payload) {
-  switch (format) {
-    case NdefRecord.TNF_EMPTY:
-      if (type.isNotEmpty || identifier.isNotEmpty || payload.isNotEmpty)
-        throw('unexpected data in EMPTY record');
-      break;
-    case NdefRecord.TNF_WELL_KNOWN:
-    case NdefRecord.TNF_MIME:
-    case NdefRecord.TNF_ABSOLUTE_URI:
-    case NdefRecord.TNF_EXTERNAL:
-      break;
-    case NdefRecord.TNF_UNKNOWN:
-    case NdefRecord.TNF_RESERVE:
-      if (type.isNotEmpty)
-        throw('unexpected type field in UNKNOWN or RESERVE record');
-      break;
-    case NdefRecord.TNF_UNCHANGED:
-      throw('unexpected UNCHANGED in first chunk or logical record');
-    default:
-      throw('unexpected format value: $format');
-  }
+/// Represents the NDEF Type-Name-Format as defined by the NFC specification.
+enum NdefTypeNameFormat {
+  /// The record contains no data.
+  empty,
+
+  /// The record contains well-known NFC record type data.
+  nfcWellknown,
+
+  /// The record contains media data as defined by RFC 2046.
+  media,
+
+  /// The record contains uniform resource identifier.
+  absoluteUri,
+
+  /// The record contains NFC external type data.
+  nfcExternal,
+
+  /// The record type is unknown.
+  unknown,
+
+  /// The record is part of a series of records containing chunked data.
+  unchanged,
 }

@@ -1,14 +1,16 @@
 # nfc_manager
 
-A Flutter plugin to manage the NFC features. Supported on both Android and iOS.
+Flutter plugin for accessing the NFC features on Android and iOS.
+
+Note: This plugin depends on `NFCTagReaderSession` (requires iOS 13.0 or later) and `NfcAdapter#enableReaderMode` (requires Android API level 19 or later).
 
 ## Setup
 
-### Android Setup
+**Android Setup**
 
 * Add [android.permission.NFC](https://developer.android.com/reference/android/Manifest.permission.html#NFC) to your `AndroidMenifest.xml`.
 
-### iOS Setup
+**iOS Setup**
 
 * Add [Near Field Communication Tag Reader Session Formats Entitlements](https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_developer_nfc_readersession_formats) to your entitlements.
 
@@ -18,90 +20,56 @@ A Flutter plugin to manage the NFC features. Supported on both Android and iOS.
 
 ## Usage
 
-### Managing Session
+**Handling Session**
 
-``` dart
+```dart
 // Check availability
 bool isAvailable = await NfcManager.instance.isAvailable();
 
-// Start session and register callback.
-NfcManager.instance.startTagSession(
+// Start Session
+NfcManager.instance.startSession(
   onDiscovered: (NfcTag tag) async {
-    // Manipulating tag
+    // Do something with an NfcTag instance.
   },
 );
 
-// Stop session and unregister callback.
+// Stop Session
 NfcManager.instance.stopSession();
 ```
 
-### Manipulating NDEF
+**Handling Platform Tag**
 
-``` dart
-// Obtain an Ndef instance from tag
-Ndef ndef = Ndef.fromTag(tag);
+The following platform-tag-classes are available:
+
+* Ndef
+* FeliCa (iOS only)
+* Iso7816 (iOS only)
+* Iso15693 (iOS only)
+* MiFare (iOS only)
+* NfcA (Android only)
+* NfcB (Android only)
+* NfcF (Android only)
+* NfcV (Android only)
+* IsoDep (Android only)
+* MifareClassic (Android only)
+* MifareUtralight (Android only)
+* NdefFormatable (Android only)
+
+Obtain an instance by calling the factory constructor `from` on the class. For example:
+
+```dart
+Ndef? ndef = Ndef.from(tag);
 
 if (ndef == null) {
-  print('Tag is not ndef');
+  print('Tag is not compatible with NDEF');
   return;
 }
 
-// You can get an NdefMessage instance cached at discovery time
-NdefMessage cachedMessage = ndef.cachedMessage;
-
-// Create an NdefMessage instance you want to write.
-NdefMessage message = NdefMessage([
-  NdefRecord.createText('Hello'),
-  NdefRecord.createUri(Uri.parse('https://flutter.dev')),
-  NdefRecord.createMime('text/plain', Uint8List.fromList('Hello'.codeUnits)),
-  NdefRecord.createExternal('mydomain', 'mytype', Uint8List.fromList('mydata'.codeUnits)),
-]);
-
-if (!ndef.isWritable) {
-  print('Tag is not ndef writable');
-  return;
-}
-
-// Write an NdefMessage
-try {
-  await ndef.write(message);
-} catch (e) {
-  // handle error
-}
+// Do something with an Ndef instance
 ```
 
-### Manipulating Platform-Specific-Tag
+Please see the [API Doc](https://pub.dev/documentation/nfc_manager/latest/) for more details.
 
-The following platform-specific-tag classes are available:
+## Real-World-App
 
-**iOS**
-
-* MiFare
-* FeliCa
-* ISO15693
-* ISO7816
-
-**Android**
-
-* NfcA
-* NfcB
-* NfcF
-* NfcV
-* IsoDep
-
-**Usage**
-
-``` dart
-MiFare miFare = MiFare.fromTag(tag);
-
-if (miFare == null) {
-  print('MiFare is not available on this tag');
-  return;
-}
-
-Uint8List response = await miFare.sendMiFareCommand(...);
-```
-
-## Example App
-
-See [this repo](https://github.com/okadan/nfc-manager) which is a Real-World-App demonstrates how to use this plugin.
+See [this repo](https://github.com/okadan/flutter-nfc-manager-app) which is a Real-World-App demonstrates how to use this plugin.

@@ -1,244 +1,184 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../channel.dart';
 import '../translator.dart';
-import './nfc_ndef.dart';
 
-/// Callback for handling ndef detection.
-typedef NdefDiscoveredCallback = Future<void> Function(Ndef ndef);
+/// Signature for `NfcManager.startSession` onDiscovered callback.
+typedef NfcTagCallback = Future<void> Function(NfcTag tag);
 
-/// Callback for handling tag detection.
-typedef TagDiscoveredCallback = Future<void> Function(NfcTag tag);
+/// Signature for `NfcManager.startSession` onError callback.
+typedef NfcErrorCallback = Future<void> Function(NfcError error);
 
-/// Callback for handling error from the session.
-typedef SessionErrorCallback = void Function(NfcSessionError error);
-
-/// Used with `NfcManager#startTagSession`.
-///
-/// This wraps `NFCTagReaderSession.PollingOption` on iOS, `NfcAdapter.FLAG_READER_*` on Android.
-enum TagPollingOption {
-  /// Represents `iso14443` on iOS, `FLAG_READER_A` and `FLAG_READER_B` on Android.
-  iso14443,
-
-  /// Represents `iso15693` on iOS, `FLAG_READER_V` on Android.
-  iso15693,
-
-  /// Represents `iso18092` on iOS, `FLAG_READER_F` on Android.
-  iso18092,
-}
-
-/// Plugin for managing NFC session.
+/// The entry point for accessing the NFC session.
 class NfcManager {
-  NfcManager._() { channel.setMethodCallHandler(_handleMethodCall); }
-  static NfcManager _instance;
+  NfcManager._() {
+    channel.setMethodCallHandler(_handleMethodCall);
+  }
+  static NfcManager? _instance;
+
+  /// A Singleton instance of NfcManager.
   static NfcManager get instance => _instance ??= NfcManager._();
 
-  NdefDiscoveredCallback _onNdefDiscovered;
+  // _onDiscovered
+  NfcTagCallback? _onDiscovered;
 
-  TagDiscoveredCallback _onTagDiscovered;
+  // _onError
+  NfcErrorCallback? _onError;
 
-  SessionErrorCallback _onSessionError;
-
-  /// Checks whether the NFC is available on the device.
+  /// Checks whether the NFC features are available.
   Future<bool> isAvailable() async {
-    return channel.invokeMethod('isAvailable', {});
+    return channel.invokeMethod('Nfc#isAvailable').then((value) => value!);
   }
 
-  /// Start session and register ndef discovered callback.
+  /// Start the session and register callbacks for tag discovery.
   ///
-  /// This uses `NFCNDEFReaderSession` on iOS, `NfcAdapter#enableReaderMode` on Android.
-  /// Requires iOS 11.0 or Android API level 19, or later.
+  /// This uses the NFCTagReaderSession (on iOS) or NfcAdapter#enableReaderMode (on Android).
+  /// Requires iOS 13.0 or Android API 19, or later.
   ///
-  /// [onDiscovered] is called each time an ndef is discovered.
+  /// `onDiscovered` is called whenever the tag is discovered.
   ///
-  /// [onSessionError] is called when the session stops for any reason after the session started. (Currently iOS only)
-  Future<bool> startNdefSession({
-    @required NdefDiscoveredCallback onDiscovered,
-    String alertMessageIOS,
-    SessionErrorCallback onSessionError,
+  /// `pollingOptions` is used to specify the type of tags to be discovered. All types by default.
+  ///
+  /// (iOS only) `alertMessage` is used to display the message on the popup shown when the session is started.
+  ///
+  /// (iOS only) `onError` is called when the session is stopped for some reason after the session has started.
+  Future<void> startSession({
+    required NfcTagCallback onDiscovered,
+    Set<NfcPollingOption>? pollingOptions,
+    String? alertMessage,
+    NfcErrorCallback? onError,
   }) async {
-    _onNdefDiscovered = onDiscovered;
-    _onSessionError = onSessionError;
-    return channel.invokeMethod('startNdefSession', {
-      'alertMessageIOS': alertMessageIOS,
+    _onDiscovered = onDiscovered;
+    _onError = onError;
+    pollingOptions ??= NfcPollingOption.values.toSet();
+    return channel.invokeMethod('Nfc#startSession', {
+      'pollingOptions':
+          pollingOptions.map((e) => $NfcPollingOptionTable[e]).toList(),
+      'alertMessage': alertMessage,
     });
   }
 
-  /// Start session and register tag discovered callback.
+  /// Stop the session and unregister callbacks.
   ///
-  /// This uses `NFCTagReaderSession` on iOS, `NfcAdapter#enableReaderMode` on Android.
-  /// Requires iOS 13.0 or Android API level 19, or later.
+  /// This uses the NFCTagReaderSession (on iOS) or NfcAdapter#disableReaderMode (on Android).
+  /// Requires iOS 13.0 or Android API 19, or later.
   ///
-  /// [onDiscovered] is called each time a tag is discovered.
-  /// Use [pollingOptions] to specify the tag types to discover. (default all types)
-  ///
-  /// [onSessionError] is called when the session stops for any reason after the session started. (Currently iOS only)
-  Future<bool> startTagSession({
-    @required TagDiscoveredCallback onDiscovered,
-    Set<TagPollingOption> pollingOptions,
-    String alertMessageIOS,
-    SessionErrorCallback onSessionError,
+  /// (iOS only) `alertMessage` and `errorMessage` are used to display the success or error message on the popup.
+  /// if both are used, `errorMessage` is used.
+  Future<void> stopSession({
+    String? alertMessage,
+    String? errorMessage,
   }) async {
-    _onTagDiscovered = onDiscovered;
-    _onSessionError = onSessionError;
-    return channel.invokeMethod('startTagSession', {
-      'pollingOptions': (pollingOptions?.toList() ?? TagPollingOption.values).map((e) => e.index).toList(),
-      'alertMessageIOS': alertMessageIOS,
+    _onDiscovered = null;
+    _onError = null;
+    return channel.invokeMethod('Nfc#stopSession', {
+      'alertMessage': alertMessage,
+      'errorMessage': errorMessage,
     });
   }
 
-  /// Stop session and unregister callback.
-  ///
-  /// This uses `NFCReaderSession` on iOS, `NfcAdapter#disableReaderMode` on Android.
-  /// Requires iOS 11.0 or Android API level 19, or later.
-  ///
-  /// On iOS, use [alertMessageIOS] to indicate the success, and [errorMessageIOS] to indicate the failure.
-  /// When both are used, [errorMessageIOS] has priority.
-  Future<bool> stopSession({
-    String errorMessageIOS,
-    String alertMessageIOS,
-  }) async {
-    _onNdefDiscovered = null;
-    _onTagDiscovered = null;
-    _onSessionError = null;
-    return channel.invokeMethod('stopSession', {
-      'errorMessageIOS': errorMessageIOS,
-      'alertMessageIOS': alertMessageIOS,
+  // _disposeTag
+  Future<void> _disposeTag(String handle) async {
+    return channel.invokeMethod('Nfc#disposeTag', {
+      'handle': handle,
     });
   }
 
+  // _handleMethodCall
   Future<void> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
-      case 'onNdefDiscovered':
-        _handleNdefDiscovered(Map<String, dynamic>.from(call.arguments));
+      case 'onDiscovered':
+        _handleOnDiscovered(call);
         break;
-      case 'onTagDiscovered':
-        _handleOnTagDiscovered(Map<String, dynamic>.from(call.arguments));
+      case 'onError':
+        _handleOnError(call);
         break;
-      case 'onSessionError':
-        _handleonSessionError(Map<String, dynamic>.from(call.arguments));
-        break;
+      default:
+        throw ('Not implemented: ${call.method}');
     }
   }
 
-  Future<void> _handleNdefDiscovered(Map<String, dynamic> arguments) async {
-    NfcTag tag = $nfcTagFromJson(arguments);
-    Ndef ndef = $ndefFromTag(tag);
-    if (ndef != null && _onNdefDiscovered != null)
-      await _onNdefDiscovered(ndef);
-    _disposeTag(tag);
+  // _handleOnDiscovered
+  void _handleOnDiscovered(MethodCall call) async {
+    final tag = $GetNfcTag(Map.from(call.arguments));
+    await _onDiscovered?.call(tag);
+    await _disposeTag(tag.handle);
   }
 
-  Future<void> _handleOnTagDiscovered(Map<String, dynamic> arguments) async {
-    NfcTag tag = $nfcTagFromJson(arguments);
-    if (_onTagDiscovered != null)
-      await _onTagDiscovered(tag);
-    _disposeTag(tag);
-  }
-
-  Future<void> _handleonSessionError(Map<String, dynamic> arguments) async {
-    if (_onSessionError != null)
-      _onSessionError($nfcSessionErrorFromJson(arguments));
-    _onNdefDiscovered = null;
-    _onTagDiscovered = null;
-    _onSessionError = null;
-  }
-
-  Future<bool> _disposeTag(NfcTag tag) async {
-    return channel.invokeMethod('disposeTag', {
-      'handle': tag.handle,
-    });
+  // _handleOnError
+  void _handleOnError(MethodCall call) async {
+    final error = $GetNfcError(Map.from(call.arguments));
+    await _onError?.call(error);
   }
 }
 
-/// Represents the tag detected by the session.
+/// The class represents the tag discovered by the session.
 class NfcTag {
-  NfcTag({
-    @required this.handle,
-    @required this.data,
+  /// Constructs an instance with the given values for testing.
+  ///
+  /// The instances constructs by this way are not valid in the production environment.
+  /// Only instances obtained from the onDiscovered callback of `NfcManager#startSession` are valid.
+  const NfcTag({
+    required this.handle,
+    required this.data,
   });
 
-  /// String value used by this plugin internally.
-  ///
-  /// Don`t use in application code.
+  /// The value used by this plugin internally.
   final String handle;
 
-  /// Raw values that can be obtained from the native platform.
+  /// The raw values about this tag obtained from the native platform.
   ///
-  /// Typically accessed through the properties of a specific-tag-class instantiated from tag. (eg MiFare.fromTag)
-  /// This property is experimental and may be changed without announcement in the future.
-  /// Not recommended for use directly.
+  /// Don't use this values directly. Instead, access it via the platform_tags classes. For example:
+  ///
+  /// ```dart
+  /// Ndef? ndef = Ndef.from(tag);
+  /// if (ndef == null) {
+  ///   print('Tag is not compatible with NDEF');
+  ///   return;
+  /// }
+  /// // Do something with an Ndef instance.
+  /// ```
   final Map<String, dynamic> data;
 }
 
-/// Provides access to NDEF operations on the tag.
-///
-/// Acquire `Ndef` instance using `Ndef.fromTag(tag)`.
-class Ndef {
-  Ndef({
-    @required this.tag,
-    @required this.cachedMessage,
-    @required this.isWritable,
-    @required this.maxSize,
+/// The class represents the error when the session is stopped.
+class NfcError {
+  /// Constructs an instance with the given values for testing.
+  ///
+  /// The instances constructs by this way are not valid in the production environment.
+  /// Only instances obtained from the onError callback of `NfcManager#startSession` are valid.
+  const NfcError({
+    required this.type,
+    required this.message,
+    this.details,
   });
 
-  final NfcTag tag;
+  /// The error type.
+  final NfcErrorType type;
 
-  /// NDEF message that was read from the tag at discovery time.
-  final NdefMessage cachedMessage;
-
-  /// Indicates whether the tag can be written with NDEF Message.
-  final bool isWritable;
-
-  /// The maximum NDEF message size in bytes, that you can store.
-  final int maxSize;
-
-  /// Get an instance of `Ndef` for the given tag.
-  ///
-  /// Returns null if the tag is not compatible with NDEF.
-  factory Ndef.fromTag(NfcTag tag) => $ndefFromTag(tag);
-
-  /// Overwrite an NDEF message on this tag.
-  ///
-  /// Requires iOS 13.0 or later, on iOS.
-  Future<bool> write(NdefMessage message) async {
-    return channel.invokeMethod('Ndef#write', {
-      'handle': tag.handle,
-      'message': $ndefMessageToJson(message),
-    });
-  }
-
-  /// Make the tag read-only.
-  ///
-  /// Requires iOS 13.0 or later, on iOS.
-  Future<bool> writeLock() async {
-    return channel.invokeMethod('Ndef#writeLock', {
-      'handle': tag.handle,
-    });
-  }
-}
-
-/// Represents the error from the session. (Currently iOS only)
-class NfcSessionError {
-  NfcSessionError({
-    @required this.type,
-    @required this.message,
-    @required this.details,
-  });
-
-  /// A type for the error.
-  final NfcSessionErrorType type;
-
-  /// A message for the error.
+  /// The error message.
   final String message;
 
-  /// A details information for the error.
+  /// The error details information.
   final dynamic details;
 }
 
-/// Represents the type for the error from the session. (Currently iOS only)
-enum NfcSessionErrorType {
+/// Represents the type of tag to be discovered by the session.
+///
+/// Typically used with `NfcManager#startSession` function.
+enum NfcPollingOption {
+  /// `iso14443` on iOS, and `FLAG_READER_A` and `FLAG_READER_B` on Android.
+  iso14443,
+
+  /// `iso15693` on iOS, and `FLAG_READER_V` on Android.
+  iso15693,
+
+  /// `iso18092` on iOS, and `FLAG_READER_F` on Android.
+  iso18092,
+}
+
+/// Represents the type of error that occurs when the session has stopped.
+enum NfcErrorType {
   /// The session timed out.
   sessionTimeout,
 
