@@ -1,105 +1,166 @@
-## 1.3.2+3
+# 3.0.0+2
 
-* update README.
+* Update doc.
 
-## 1.3.2+2
+# 3.0.0+1
 
-* update README.
+* Flutter format.
 
-## 1.3.2+1
+# 3.0.0
 
-* update README.
+* Upgrade to null safety.
 
-## 1.3.2
+# 2.0.3
 
-* fix crash on Ndef write and writeLock error.
+* Fix type conversion errors in `FeliCa#readWithoutEncryption` and `FeliCa#requestServiceV2`.
 
-## 1.3.1
+# 2.0.2
 
-* fix a bug where the error callback was not called.
+* Fix a bug in calling `FeliCa.sendFeliCaCommand` method.
 
-## 1.3.0
+# 2.0.1+1
 
-* add callback to handle error from session.
+* Update README.
 
-## 1.2.0
+# 2.0.1
 
-* make discovered callback async.
+* Fix an error when initializing plugin for non-NFC Android devices.
 
-## 1.1.0+1
+# 2.0.0+2
 
-* update readme.
+* Update doc.
+* Flutter format.
 
-## 1.1.0
+# 2.0.0+1
 
-* add constants.
-* fix misspelled name.
-* fix xcode build warning.
-* increase the Flutter SDK requirement to ^1.10.0.
+* Update doc.
 
-## 1.0.1
+# 2.0.0
 
-* fix error on invoking transceive method.
+**Has many breaking changes.**
 
-## 1.0.0
+* Remove `startNdefSession` and `NdefDiscoveredCallback`.
+* Rename `startTagSession` to `startSession`.
+* Rename `TagPollingOption` to `NfcPollingOption`.
+* Rename `NfcSessionError` to `NfcError`.
+* Rename `NfcSessionErrorType` to `NfcErrorType`.
+* Rename `TagDiscoveredCallback` to `NfcTagCallback`.
+* Rename `NfcSessionErrorCallback` to `NfcErrorCallback`.
+* Rename `ISO15693` to `Iso15693`.
+* Rename `ISO7816` to `Iso7816`.
+* Rename `fromTag` to `from`. (e.g. `MiFare.fromTag(tag)` -> `MiFare.from(tag)`)
+* Add `NdefTypeNameFormat` enum.
+* Add `NdefFormatable`, `MifareClassic` and `MifareUltralight` classes.
+* Add `Ndef#read` method.
+* Add command-implementations for `FeliCa` and `Iso15693`.
+* Upgrade flutter environment.
 
-* add platform-specifc-tag operations.
-* remove `NfcSessionType` enum.
-* migrate to pubspec platforms manifest.
-* more consistent naming.
+# 1.3.2+4
 
-## 0.5.1
+* Update README.
 
-* update flutter project files.
-* additional fix for migration to AndroidX.
+# 1.3.2+3
 
-## 0.5.0
+* Update README.
 
-* migrate to AndroidX.
+# 1.3.2+2
 
-## 0.4.0+2
+* Update README.
 
-* fix typo on README
+# 1.3.2+1
 
-## 0.4.0+1
+* Update README.
 
-* update README
+# 1.3.2
 
-## 0.4.0
+* Fix crash on Ndef write and writeLock error.
 
-* rename `NfcNdef#cachedNdef` to `NfcNdef#cachedMessage`.
-* add `NfcSessionType` enum.
-* add `NfcTagPollingOption` enum.
+# 1.3.1
 
-## 0.3.0
+* Fix a bug where the error callback was not called.
 
-* add `NdefRecord#createMimeRecord`.
-* add optional parameters `alertMessageIOS` and `errorMessageIOS` displayed in iOS system UI.
-* fix error on deserializing null message on dart side.
+# 1.3.0
 
-## 0.2.0
+* Add callback to handle error from session.
 
-* split `startSession` into `startNdefSession` and `startTagSession`.
-* improve doc.
+# 1.2.0
 
-## 0.1.1
+* Make discovered callback async.
 
-* fix crash on serializing nil message on ios side.
-* add example project.
-* improve doc.
+# 1.1.0+1
 
-## 0.1.0+2
+* Update readme.
 
-* improve doc.
+# 1.1.0
 
-## 0.1.0+1
+* Add constants.
+* Fix misspelled name.
+* Fix xcode build warning.
+* Increase the Flutter SDK requirement to ^1.10.0.
 
-* improve doc.
+# 1.0.1
 
-## 0.1.0
+* Fix error on invoking transceive method.
 
-* add iOS 13 features.
+# 1.0.0
 
-## 0.0.1
+* Add platform-specifc-tag operations.
+* Remove `NfcSessionType` enum.
+* Migrate to pubspec platforms manifest.
+* More consistent naming.
 
-* initial release.
+# 0.5.1
+
+* Update flutter project files.
+* Additional fix for migration to AndroidX.
+
+# 0.5.0
+
+* Migrate to AndroidX.
+
+# 0.4.0+2
+
+* Fix typo on README
+
+# 0.4.0+1
+
+* Update README
+
+# 0.4.0
+
+* Rename `NfcNdef#cachedNdef` to `NfcNdef#cachedMessage`.
+* Add `NfcSessionType` enum.
+* Add `NfcTagPollingOption` enum.
+
+# 0.3.0
+
+* Add `NdefRecord#createMimeRecord`.
+* Add optional parameters `alertMessageIOS` and `errorMessageIOS` displayed in iOS system UI.
+* Fix error on deserializing null message on dart side.
+
+# 0.2.0
+
+* Split `startSession` into `startNdefSession` and `startTagSession`.
+* Improve doc.
+
+# 0.1.1
+
+* Fix crash on serializing nil message on ios side.
+* Add example project.
+* Improve doc.
+
+# 0.1.0+2
+
+* Improve doc.
+
+# 0.1.0+1
+
+* Improve doc.
+
+# 0.1.0
+
+* Add iOS 13 features.
+
+# 0.0.1
+
+* Initial release.

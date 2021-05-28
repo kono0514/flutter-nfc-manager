@@ -5,7 +5,10 @@ import 'package:nfc_manager/platform_tags.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:convert/convert.dart';
 
-void main() => runApp(MyApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(MyApp());
+}
 
 class MyApp extends StatefulWidget {
   @override
@@ -68,17 +71,14 @@ class MyAppState extends State<MyApp> {
                           children: [
                             // RaisedButton(
                             //     child: Text('Tag Read'), onPressed: _tagRead),
-                            RaisedButton(
+                            ElevatedButton(
                                 child: Text('Ndef Write'),
                                 onPressed: _ndefWrite),
-                            RaisedButton(
+                            ElevatedButton(
                                 child: Text('Ndef Write Lock'),
                                 onPressed: _ndefWriteLock),
                           ],
                         ),
-                      ),
-                      CircularProgressIndicator(
-                        value: null,
                       ),
                     ],
                   ),
@@ -89,10 +89,14 @@ class MyAppState extends State<MyApp> {
   }
 
   void _tagRead() {
-    NfcManager.instance.startTagSession(onDiscovered: (NfcTag tag) async {
+    NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
       result.value = tag.data;
       print(tag.data);
-      IsoDep testDep = IsoDep.fromTag(tag);
+      IsoDep? testDep = IsoDep.from(tag);
+      if (testDep == null) {
+        print('Not a valid IsoDep');
+        return;
+      }
       var command1 = Uint8List.fromList([
         0x00,
         0xa4,
@@ -109,19 +113,19 @@ class MyAppState extends State<MyApp> {
         0x00,
         0x04,
       ]);
-      var command1Res = await testDep.transceive(command1);
-      var command2Res = await testDep.transceive(command2);
+      var command1Res = await testDep.transceive(data: command1);
+      var command2Res = await testDep.transceive(data: command2);
       print("DONE!");
       // NfcManager.instance.stopSession();
     });
   }
 
   void _ndefWrite() {
-    NfcManager.instance.startTagSession(onDiscovered: (NfcTag tag) async {
-      Ndef ndef = Ndef.fromTag(tag);
-      if (ndef == null) {
-        result.value = 'Tag is not ndef';
-        NfcManager.instance.stopSession(errorMessageIOS: result.value);
+    NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
+      var ndef = Ndef.from(tag);
+      if (ndef == null || !ndef.isWritable) {
+        result.value = 'Tag is not ndef writable';
+        NfcManager.instance.stopSession(errorMessage: result.value);
         return;
       }
 
@@ -140,20 +144,18 @@ class MyAppState extends State<MyApp> {
         NfcManager.instance.stopSession();
       } catch (e) {
         result.value = e;
-        NfcManager.instance
-            .stopSession(errorMessageIOS: result.value.toString());
+        NfcManager.instance.stopSession(errorMessage: result.value.toString());
         return;
       }
     });
   }
 
   void _ndefWriteLock() {
-    NfcManager.instance.startTagSession(onDiscovered: (NfcTag tag) async {
-      Ndef ndef = Ndef.fromTag(tag);
+    NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
+      var ndef = Ndef.from(tag);
       if (ndef == null) {
         result.value = 'Tag is not ndef';
-        NfcManager.instance
-            .stopSession(errorMessageIOS: result.value.toString());
+        NfcManager.instance.stopSession(errorMessage: result.value.toString());
         return;
       }
 
@@ -163,8 +165,7 @@ class MyAppState extends State<MyApp> {
         NfcManager.instance.stopSession();
       } catch (e) {
         result.value = e;
-        NfcManager.instance
-            .stopSession(errorMessageIOS: result.value.toString());
+        NfcManager.instance.stopSession(errorMessage: result.value.toString());
         return;
       }
     });
